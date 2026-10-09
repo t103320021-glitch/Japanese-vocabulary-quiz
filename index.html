@@ -1,192 +1,189 @@
-<!doctype html>
-<html lang="zh-Hant">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>🎧 日文單字聽寫測驗系統</title>
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#111827"><title>日文單字測驗｜日文學習版</title>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#f8fafc;color:#0f172a;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",sans-serif}
-main{max-width:760px;margin:auto;padding:24px 16px 60px}h1{margin:0 0 8px}.muted{color:#64748b}.card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:20px;margin:16px 0;box-shadow:0 3px 10px #0000000b}
-label.title{display:block;font-weight:700;margin:16px 0 8px}select{width:100%;padding:11px;border:1px solid #cbd5e1;border-radius:8px;background:white}
-.choices{display:grid;gap:9px}.choice{border:1px solid #cbd5e1;border-radius:9px;padding:11px;cursor:pointer}
-button{border:0;border-radius:9px;padding:11px 16px;background:#1e293b;color:#fff;font-weight:700;cursor:pointer}.primary{width:100%;background:#bc002d;font-size:16px}
-.hidden{display:none}.sticky{position:sticky;top:0;z-index:5;background:#fff;padding:10px 0;border-bottom:1px solid #e2e8f0}
-.player{display:flex;gap:10px;align-items:center;justify-content:space-between;background:#f8fafc;border:1px solid #cbd5e1;border-radius:9px;padding:10px}
-.status{background:#bc002d;color:white;border-radius:5px;padding:5px 9px;font-size:12px;font-weight:700}.question{padding:18px 0;border-bottom:1px solid #f1f5f9}
-.dashboard{border-left:6px solid #bc002d;background:linear-gradient(135deg,#fff,#fff5f5)}.stats{display:flex;gap:12px;flex-wrap:wrap}.stat{flex:1;min-width:150px;border:1px solid #e2e8f0;border-radius:9px;padding:12px}.num{font-size:24px;font-weight:800}
-.barbg{height:8px;background:#e2e8f0;border-radius:99px;overflow:hidden;margin-top:15px}.bar{height:100%;background:#bc002d}.good{border-left:5px solid #16a34a}.bad{border-left:5px solid #dc2626}.word{font-size:20px;font-weight:800;color:#bc002d}
-.error{color:#dc2626;background:#fef2f2;padding:12px;border-radius:8px}
-</style>
-</head>
-<body><main>
-<h1>🎧 日文單字自動分類聽寫測驗系統</h1>
-<div class="muted">Google 試算表資料庫・瀏覽器日文語音版</div>
-<div id="dashboard"></div>
-
-<section id="setup" class="card">
-<h2>🛠️ 設定你的日文聽力測驗</h2>
-<label class="title">🎯 請選擇單字分類</label><select id="category"><option>載入中...</option></select>
-<label class="title">請選擇本次測驗題數</label>
-<div class="choices"><label class="choice"><input type="radio" name="num" value="10" checked> 10 題</label><label class="choice"><input type="radio" name="num" value="20"> 20 題</label><label class="choice"><input type="radio" name="num" value="30"> 30 題</label></div>
-<label class="title">請選擇單字重複播放次數</label>
-<div class="choices"><label class="choice"><input type="radio" name="repeat" value="1" checked> 單字唸 1 遍</label><label class="choice"><input type="radio" name="repeat" value="2"> 單字唸 2 遍</label><label class="choice"><input type="radio" name="repeat" value="3"> 單字唸 3 遍</label></div>
-<label class="title">請選擇單字之間的間隔時間</label>
-<div class="choices"><label class="choice"><input type="radio" name="delay" value="3" checked> 3 秒</label><label class="choice"><input type="radio" name="delay" value="5"> 5 秒</label><label class="choice"><input type="radio" name="delay" value="10"> 10 秒</label></div>
-<button class="primary" id="start">🚀 開始測驗</button><div id="msg" class="muted" style="margin-top:10px"></div>
-<div class="muted" style="font-size:12px;margin-top:6px">🔊 日文語音已使用瀏覽器允許的最大音量；若還是偏小，請調高 Mac／Chrome 的系統音量。</div>
-</section>
-
-<section id="exam" class="hidden">
-<div class="sticky"><div class="player"><b>🎧 全體連續日文盲聽挑戰中</b><span id="status" class="status">準備就緒</span><button id="play">▶ 開始連續播放</button></div></div>
-<div id="questions" class="card"></div><button class="primary" id="submit">🏁 寫完了，送出交卷！</button>
-</section>
-
-<section id="result" class="hidden"><div class="card"><h2>📊 測驗結果報告</h2><div id="score"></div></div><div class="card"><h2>📋 答案與日文單字對照表</h2><div id="results"></div></div><button class="primary" id="retry">🔄 再考一次</button></section>
-</main>
-<script>
-const CSV_URL="https://docs.google.com/spreadsheets/d/e/2PACX-1vTbWZliMshdB-A3d7bwhpqHuQPe6yQSdK9f0Eqd0Ab10pxgyU5MsLRc8Hqo4w9pOch8AUbckgKwtQEc/pub?gid=633915518&single=true&output=csv";
-let words=[],qs=[],ans={},idx=0,playing=false,timer=null,repeat=1,delay=3;
-let hist=JSON.parse(localStorage.getItem("jpHistory")||'{"total":0,"correct":0,"wrong_category":{}}');
-const $=id=>document.getElementById(id), esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
-function csv(t){let a=[],r=[],c="",q=false;for(let i=0;i<t.length;i++){let x=t[i],n=t[i+1];if(x=='"'&&q&&n=='"'){c+='"';i++;continue}if(x=='"'){q=!q;continue}if(x==','&&!q){r.push(c);c="";continue}if((x=="\n"||x=="\r")&&!q){if(x=="\r"&&n=="\n")i++;r.push(c);if(r.some(v=>v.trim()))a.push(r);r=[];c="";continue}c+=x}if(c||r.length){r.push(c);a.push(r)}return a}
-function load(){
-  $("msg").textContent="正在讀取 Google 試算表……";
-  const callbackName="jpSheetCallback_"+Date.now();
-  const script=document.createElement("script");
-
-  const url =
-    "https://docs.google.com/spreadsheets/d/" +
-    "1-0rKtKo8h4CAB724VMh0mE4aZEK8oqgCvXDcgaSNIy0" +
-    "/gviz/tq?gid=633915518&tqx=responseHandler:" + callbackName;
-
-  window[callbackName]=function(data){
-    try{
-      const rows=(data.table && data.table.rows) || [];
-
-      words=rows.map(row=>{
-        const cells=row.c || [];
-        const v=i => cells[i] && cells[i].v != null ? String(cells[i].v) : "";
-
-        return {
-          kanji:v(0).trim(),
-          hiragana:v(1).trim(),
-          katakana:v(2).trim(),
-          meaning:v(3).trim(),
-          category:(v(4).trim() || "未分類")
-        };
-      }).filter(w =>
-        (w.kanji || w.hiragana || w.katakana) && w.meaning
-      );
-
-      const cats=[...new Set(words.map(w=>w.category))].sort();
-
-      $("category").innerHTML =
-        "<option>全部放進去考</option>" +
-        cats.map(c=>"<option>"+esc(c)+"</option>").join("");
-
-      $("msg").textContent="✅ 成功讀取 "+words.length+" 個單字";
-      dash();
-
-    }catch(e){
-      $("msg").innerHTML =
-        '<div class="error">❌ Google Sheet 資料讀取失敗：' +
-        esc(e.message) + '</div>';
+:root{--bg:#f4f7fb;--card:#fff;--ink:#172033;--muted:#667085;--line:#e4e7ec;--accent:#be123c;--good:#15803d;--bad:#b42318}*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",sans-serif;background:var(--bg);color:var(--ink)}.wrap{max-width:860px;margin:auto;padding:18px}.hero{background:#9f1239;color:white;padding:22px;border-radius:20px;margin-bottom:14px}.hero h1{font-size:26px;margin:0 0 6px}.hero p{margin:0;color:#cbd5e1}.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin:12px 0;box-shadow:0 4px 18px #1018280a}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}label{font-size:13px;color:var(--muted);display:block;margin-bottom:5px}select,input,button{font:inherit}select,input[type=search]{width:100%;padding:11px 12px;border:1px solid #d0d5dd;border-radius:11px;background:white}button{border:0;border-radius:11px;padding:11px 14px;background:#eef2f6;color:#172033;font-weight:700;cursor:pointer}.primary{background:var(--accent);color:white}.danger{background:#fee4e2;color:var(--bad)}.good{background:#dcfae6;color:var(--good)}.stat{font-size:13px;color:var(--muted)}#status{padding:9px 0;font-size:13px;color:var(--muted)}.word{font-size:34px;font-weight:800;margin:10px 0}.meaning{font-size:22px}.pos{display:inline-block;padding:4px 8px;border-radius:999px;background:#eef4ff;color:#3538cd;font-size:12px}.example{margin-top:12px;padding:12px;background:#f8fafc;border-radius:12px;line-height:1.6}.choices{display:grid;gap:9px;margin-top:14px}.choice{text-align:left;background:white;border:1px solid #d0d5dd}.choice.correct{border-color:#16a34a;background:#f0fdf4}.choice.wrong{border-color:#dc2626;background:#fef2f2}.hidden{display:none!important}.list{max-height:420px;overflow:auto}.item{padding:12px 4px;border-bottom:1px solid var(--line)}.item b{font-size:18px}.item small{color:var(--muted)}.pill{display:inline-block;padding:3px 7px;border-radius:999px;background:#f2f4f7;color:#475467;font-size:11px}.tabs{display:flex;gap:8px;overflow:auto}.tabs button{white-space:nowrap}.tabs .on{background:#111827;color:white}@media(max-width:600px){.wrap{padding:12px}.grid{grid-template-columns:1fr}.hero h1{font-size:22px}.word{font-size:30px}}
+</style></head><!-- English vocabulary data endpoint fixed: 2026-10-05 -->
+<body><main class="wrap"><section class="hero"><h1>日文單字測驗</h1><p>Google Sheet 日文資料同步・手機版・聽力測驗・收藏與複習</p></section><div id="status">正在讀取 Google 單字資料…</div>
+<div class="tabs"><button class="on" data-tab="quiz">單字測驗</button><button data-tab="browse">查單字</button><button data-tab="listen">連續盲聽</button><button data-tab="fav">我的收藏</button></div>
+<section id="quiz" class="tab"><div class="card grid"><div><label>分類</label><select id="category"></select></div><div><label>題數</label><select id="count"><option>10</option><option>20</option><option>30</option><option value="all">全部</option></select></div><div><label>單字唸幾遍</label><select id="repeat"><option>1</option><option selected>2</option><option>3</option></select></div><div><label>單字之間的間隔</label><select id="quizGap"><option value="3000">3 秒</option><option value="5000" selected>5 秒</option><option value="10000">10 秒</option></select></div><div><label>語速</label><select id="rate"><option value="0.75">0.75×</option><option value="0.9" selected>0.9×</option><option value="1">1×</option><option value="1.15">1.15×</option></select></div><div><label>日文語音</label><select id="accent"><option value="ja-JP">🇯🇵 日本語</option></select></div></div><div class="card"><div class="row"><button class="primary" id="start">開始測驗並連續播放</button><button id="replayQuiz" class="hidden">▶ 重新播放全部題目</button><button id="pauseQuiz" class="hidden">暫停</button><span class="stat" id="progress"></span></div><div id="question" class="hidden"><div class="meaning" style="margin:12px 0">🎧 請聽日文發音，選擇正確的中文意思</div><div id="allQuestions"></div><button class="primary" id="submitQuiz" style="margin-top:16px">交卷</button></div><div id="result" class="hidden"></div></div></section>
+<section id="browse" class="tab hidden"><div class="card"><input type="search" id="search" placeholder="搜尋漢字、平假名、片假名、中文或分類…"><div class="stat" id="searchStat"></div><div class="list" id="wordList"></div></div></section>
+<section id="listen" class="tab hidden"><div class="card grid"><div><label>分類</label><select id="listenCategory"></select></div><div><label>每個單字唸幾遍</label><select id="listenRepeat"><option>1</option><option selected>2</option><option>3</option></select></div><div><label>單字間隔</label><select id="gap"><option value="3000">3 秒</option><option value="5000" selected>5 秒</option><option value="10000">10 秒</option></select></div><div><label>語速</label><select id="listenRate"><option value="0.75">0.75×</option><option value="0.9" selected>0.9×</option><option value="1">1×</option><option value="1.15">1.15×</option></select></div><div><label>日文語音</label><select id="listenAccent"><option value="ja-JP">🇯🇵 日本語</option></select></div></div><div class="card"><div class="row"><button class="primary" id="playAll">開始連續播放</button><button id="pauseAll">暫停</button><button class="danger" id="stopAll">停止</button></div><div class="stat" id="listenProgress"></div><div id="nowPlaying"></div></div></section>
+<section id="fav" class="tab hidden"><div class="card"><div class="row"><button class="primary" id="playFav">播放收藏</button><button class="danger" id="clearFav">清空收藏</button></div><div class="list" id="favList"></div></div></section>
+</main><script>
+// === 只要 Google Sheet 維持公開可讀，之後新增單字不需要重新部署 ===
+const SHEET_ID='1-0rKtKo8h4CAB724VMh0mE4aZEK8oqgCvXDcgaSNIy0';
+const SHEET_GID='633915518'; // 日文工作表，請勿改成英文頁籤
+const GVIZ_BASE=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq`;
+const CACHE_KEY='jp-word-cache-v1', CACHE_TTL=30*60*1000, FAV_KEY='jp-word-favorites-v1';
+let words=[], filtered=[], quiz=[], qi=0, score=0, locked=false, listening=false, paused=false, listenTimer=null, listenSeq=[], li=0, quizPlaying=false, quizPaused=false, quizAnswers={};
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+function parseCSV(t){let rows=[],row=[],cell='',q=false;for(let i=0;i<t.length;i++){let c=t[i];if(q){if(c==='"'&&t[i+1]==='"'){cell+='"';i++}else if(c==='"')q=false;else cell+=c}else if(c==='"')q=true;else if(c===','){row.push(cell);cell=''}else if(c==='\n'){row.push(cell.replace(/\r$/,''));rows.push(row);row=[];cell=''}else cell+=c}if(cell||row.length){row.push(cell);rows.push(row)}return rows}
+function normalize(rows){return rows.slice(1).map((r,i)=>makeWord(r,i)).filter(Boolean)}
+function makeWord(r,i){
+ const kanji=String(r[0]||'').trim(),hiragana=String(r[1]||'').trim(),katakana=String(r[2]||'').trim(),zh=String(r[3]||'').trim(),cat=String(r[4]||'未分類').trim()||'未分類';
+ if(!(kanji||hiragana||katakana)||!zh)return null;
+ const reading=hiragana||katakana||kanji;
+ return {id:i+1,en:reading,zh,pos:kanji&&kanji!==reading?kanji:(katakana&&katakana!==reading?katakana:''),ex:[kanji,hiragana,katakana].filter(Boolean).join('・'),cat,kanji,hiragana,katakana};
+}
+function normalizeGviz(resp){return (resp?.table?.rows||[]).map((r,i)=>makeWord((r.c||[]).map(c=>c?.v==null?'':String(c.v)),i)).filter(Boolean)}
+function loadFromGoogle(){
+  return new Promise((resolve,reject)=>{
+    const cb='jpGviz_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+    const script=document.createElement('script');
+    const timer=setTimeout(()=>finish(new Error('Google Sheet 讀取逾時')),15000);
+    let done=false;
+    function finish(err,data){
+      if(done)return; done=true; clearTimeout(timer);
+      try{delete window[cb]}catch{}; script.remove();
+      err?reject(err):resolve(data);
     }
-
-    delete window[callbackName];
-    script.remove();
-  };
-
-  script.onerror=function(){
-    delete window[callbackName];
-    script.remove();
-
-    $("msg").innerHTML =
-      '<div class="error">' +
-      '❌ 無法讀取 Google Sheet。<br><br>' +
-      '請確認這份試算表已設定「知道連結的使用者可以檢視」，' +
-      '並且目前這個 GID = 633915518 的工作表可以被公開讀取。' +
-      '</div>';
-  };
-
-  script.src=url;
-  document.head.appendChild(script);
+    window[cb]=resp=>{
+      try{
+        if(resp?.status==='error') throw new Error(resp.errors?.[0]?.detailed_message||resp.errors?.[0]?.message||'Google Sheet 回傳錯誤');
+        const data=normalizeGviz(resp);
+        if(!data.length) throw new Error('日文單字頁籤沒有可讀取的單字');
+        finish(null,data);
+      }catch(e){finish(e)}
+    };
+    script.onerror=()=>finish(new Error('無法連線 Google Sheet'));
+    const tq=encodeURIComponent('select A,B,C,D,E');
+    script.src=`${GVIZ_BASE}?gid=${encodeURIComponent(SHEET_GID)}&tq=${tq}&tqx=${encodeURIComponent('responseHandler:'+cb)}&_=${Date.now()}`;
+    document.head.appendChild(script);
+  });
 }
-function shuffle(a){return [...a].sort(()=>Math.random()-.5)}
-function speak(t){speechSynthesis.cancel();let u=new SpeechSynthesisUtterance(t);u.lang="ja-JP";u.rate=.9;u.volume=1;speechSynthesis.speak(u)}
-function dash(){if(!hist.total){$("dashboard").innerHTML="";return}let rate=hist.correct/hist.total*100,c=Object.entries(hist.wrong_category).sort((a,b)=>b[1]-a[1]);$("dashboard").innerHTML='<div class="card dashboard"><b>📊 日文單字累積學習儀表板</b><div class="stats" style="margin-top:15px"><div class="stat">🧠 累計記憶率<div class="num">'+rate.toFixed(1)+'%</div>總練 '+hist.total+' 字</div><div class="stat">🎯 答對總題數<div class="num">'+hist.correct+'</div></div><div class="stat">⚠️ 弱點分類<div class="num" style="font-size:18px">'+(c.length?esc(c[0][0])+" ("+c[0][1]+"次)":"暫無")+'</div></div></div><div class="barbg"><div class="bar" style="width:'+Math.min(100,rate)+'%"></div></div></div>'}
-$("start").onclick=()=>{let cat=$("category").value,pool=cat=="全部放進去考"?words:words.filter(w=>w.category==cat),n=Math.min(+document.querySelector('input[name=num]:checked').value,pool.length);repeat=+document.querySelector('input[name=repeat]:checked').value;delay=+document.querySelector('input[name=delay]:checked').value;if(!pool.length)return alert("沒有可測驗的單字");qs=shuffle(pool).slice(0,n).map(w=>{let wrong=shuffle(pool.filter(x=>x.meaning!=w.meaning)).slice(0,3).map(x=>x.meaning);wrong=wrong.concat(shuffle(words.filter(x=>x.category!=w.category&&x.meaning!=w.meaning)).slice(0,3-wrong.length).map(x=>x.meaning));while(wrong.length<3)wrong.push("（無選項）");return {...w,options:shuffle([...wrong,w.meaning]),display:w.kanji?(w.kanji+" ("+(w.hiragana||w.katakana)+")"):(w.hiragana||w.katakana)}});$("questions").innerHTML=qs.map((q,i)=>'<div class="question"><h3>第 '+(i+1)+' 題</h3><div class="muted">請選擇此日文單字的正確中文意思：</div><div class="choices" style="margin-top:10px">'+q.options.map(o=>'<label class="choice"><input type="radio" name="q'+i+'" value="'+esc(o)+'"> '+esc(o)+'</label>').join("")+"</div></div>").join("");$("setup").classList.add("hidden");$("result").classList.add("hidden");$("exam").classList.remove("hidden")};
-function speakSequence(texts, onDone){
-  speechSynthesis.cancel();
-  let i=0;
-  function go(){
-    if(!playing)return;
-    if(i>=texts.length){ if(onDone) onDone(); return; }
-    const u=new SpeechSynthesisUtterance(texts[i]);
-    u.lang="ja-JP";
-    u.rate=.9;
-    u.onend=()=>{i++;setTimeout(go,250)};
-    u.onerror=()=>{i++;setTimeout(go,250)};
-    speechSynthesis.speak(u);
+async function load(){
+  $('#status').textContent='正在連線 Google Sheet…';
+  let cached; try{cached=JSON.parse(localStorage.getItem(CACHE_KEY)||'null')}catch{}
+  try{
+    const data=await loadFromGoogle();
+    words=data;
+    try{localStorage.setItem(CACHE_KEY,JSON.stringify({time:Date.now(),data}))}catch{}
+    ready('Google Sheet 已同步');
+  }catch(e){
+    if(cached?.data?.length){words=cached.data;ready('Google 連線失敗，已使用上次快取')}
+    else $('#status').textContent='目前無法載入單字：'+e.message;
   }
-  go();
 }
-function next(){
-  if(!playing)return;
-  if(idx>=qs.length){
-    $("status").textContent="播放完畢";
-    $("play").textContent="▶ 重新播放";
-    playing=false;idx=0;return;
-  }
+async function refreshInBackground(){
+  try{const data=await loadFromGoogle();if(data.length){words=data;localStorage.setItem(CACHE_KEY,JSON.stringify({time:Date.now(),data}));setup()}}catch{}
+}
+function ready(msg){$('#status').textContent=`${msg}｜共 ${words.length} 個單字`;setup()}
+function setup(){let cats=['全部',...new Set(words.map(x=>x.cat))];for(let id of ['category','listenCategory']){let el=$('#'+id),v=el.value;el.innerHTML=cats.map(c=>`<option>${esc(c)}</option>`).join('');if(cats.includes(v))el.value=v}renderList(words);renderFav()}
+function esc(s){return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+function pool(cat){return cat==='全部'?words:words.filter(x=>x.cat===cat)}
+function shuffle(a){a=[...a];for(let i=a.length-1;i;i--){let j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+function speak(text,rate=0.9,lang){return new Promise(res=>{speechSynthesis.cancel();let u=new SpeechSynthesisUtterance(text);u.lang=lang||$('#accent')?.value||'ja-JP';let voices=speechSynthesis.getVoices();let exact=voices.find(v=>v.lang.toLowerCase()===u.lang.toLowerCase());let near=voices.find(v=>v.lang.toLowerCase().startsWith(u.lang.slice(0,2).toLowerCase()));if(exact||near)u.voice=exact||near;u.rate=+rate;u.onend=res;u.onerror=res;speechSynthesis.speak(u)})}
+async function repeatSpeak(text,n,rate,lang){for(let i=0;i<n;i++){await speak(text,rate,lang);if(i<n-1)await wait(2000)}} const wait=ms=>new Promise(r=>setTimeout(r,ms));
+function startQuiz(){
+  quizPlaying=false;quizPaused=false;speechSynthesis.cancel();
+  let p=pool($('#category').value);
+  if(p.length<2)return alert('這個分類至少需要 2 個單字才能測驗');
+  let n=$('#count').value==='all'?p.length:Math.min(+$('#count').value,p.length);
+  quiz=shuffle(p).slice(0,n); score=0; quizAnswers={}; qi=0;
+  $('#result').classList.add('hidden');
+  $('#question').classList.remove('hidden');
+  $('#replayQuiz').classList.remove('hidden');
+  $('#pauseQuiz').classList.remove('hidden');
+  $('#pauseQuiz').textContent='暫停';
+  renderQuizQuestions();
+  playQuizAll();
+}
+function renderQuizQuestions(){
+  $('#allQuestions').innerHTML=quiz.map((w,i)=>{
+    let opts=shuffle([w,...shuffle(words.filter(x=>x.zh!==w.zh)).slice(0,3)]);
+    return `<div class="item" id="quizItem${i}">
+      <div class="row"><b>第 ${i+1} 題</b><button type="button" onclick="playQuizWord(${i})">🔊 再聽這題</button></div>
+      <div class="choices">${opts.map(x=>`<label class="choice"><input type="radio" name="quiz${i}" value="${esc(x.zh)}"> ${esc(x.zh)}</label>`).join('')}</div>
+    </div>`;
+  }).join('');
+  $('#progress').textContent=`共 ${quiz.length} 題｜開始後會自動把全部題目依序唸完`;
+}
+async function playQuizWord(i){
+  if(!quiz[i])return;
+  await repeatSpeak(quiz[i].en,+$('#repeat').value,+$('#rate').value,$('#accent').value);
+}
+async function playQuizAll(){
+  if(!quiz.length || quizPlaying)return;
+  quizPlaying=true; quizPaused=false; qi=0;
+  $('#pauseQuiz').textContent='暫停';
+  for(let i=0;i<quiz.length && quizPlaying;i++){
+    qi=i;
+    while(quizPaused && quizPlaying) await wait(200);
+    if(!quizPlaying)break;
+    $('#progress').textContent=`正在播放第 ${i+1} / ${quiz.length} 題`;
+    document.querySelectorAll('[id^="quizItem"]').forEach(x=>x.style.outline='');
+    let item=$('#quizItem'+i); if(item)item.style.outline='2px solid #be123c';
 
-  $("status").textContent="第 "+(idx+1)+" 題播放中";
-  let q=qs[idx], count=0;
+    // 每題開始先用日文念題號，例如 Question one / Question two。
+    await speak(`第 ${i+1} 問`,.88,$('#accent').value);
+    await wait(1200);
 
-  function playOne(){
-    if(!playing)return;
-    count++;
-
-    const numberText="第 "+(idx+1)+" 問。";
-    const wordText=q.hiragana||q.katakana||q.kanji;
-
-    // 每一題只唸一次「第 X 問」。
-    // 如果設定唸 2～3 遍，只重複唸單字，不重複唸題號。
-    if(count===1){
-      speakSequence([numberText,wordText],()=>{
-        if(!playing)return;
-        if(count<repeat){
-          // 重複播放時，單字與下一遍之間固定至少間隔 2 秒
-          timer=setTimeout(playOne,2000);
-        }else{
-          finishQuestion();
-        }
-      });
-    }else{
-      speakSequence([wordText],()=>{
-        if(!playing)return;
-        if(count<repeat){
-          // 第 2、3 遍之間也固定間隔 2 秒
-          timer=setTimeout(playOne,2000);
-        }else{
-          finishQuestion();
-        }
-      });
+    // 再念本題日文單字；若設定 2～3 遍，只重複單字，不重複題號。
+    await repeatSpeak(quiz[i].en,+$('#repeat').value,+$('#rate').value,$('#accent').value);
+    if(i<quiz.length-1 && quizPlaying){
+      $('#progress').textContent=`第 ${i+1} 題播放完成｜等待下一題…`;
+      let remain=+$('#quizGap').value;
+      while(remain>0 && quizPlaying){
+        while(quizPaused && quizPlaying) await wait(200);
+        if(!quizPlaying)break;
+        let step=Math.min(200,remain); await wait(step); remain-=step;
+      }
     }
   }
-
-  function finishQuestion(){
-    idx++;
-    if(idx<qs.length){
-      $("status").textContent="間隔停頓中";
-      timer=setTimeout(next,delay*1000);
-    }else{
-      next();
-    }
-  }
-  playOne();
+  document.querySelectorAll('[id^="quizItem"]').forEach(x=>x.style.outline='');
+  if(quizPlaying)$('#progress').textContent=`全部 ${quiz.length} 題播放完畢，可以作答或重新播放`;
+  quizPlaying=false;
 }
-$("play").onclick=()=>{if(!playing){playing=true;idx=0;$("play").textContent="⏸ 暫停";next()}else{playing=false;clearTimeout(timer);speechSynthesis.cancel();$("play").textContent="▶ 恢復播放";$("status").textContent="已暫停"}};
-$("submit").onclick=()=>{playing=false;clearTimeout(timer);speechSynthesis.cancel();let correct=0;qs.forEach((q,i)=>{let e=document.querySelector('input[name=q'+i+']:checked');ans[i]=e?e.value:null;hist.total++;if(ans[i]==q.meaning)correct++;else hist.wrong_category[q.category]=(hist.wrong_category[q.category]||0)+1});hist.correct+=correct;localStorage.setItem("jpHistory",JSON.stringify(hist));$("score").innerHTML='<div class="num">'+Math.round(correct/qs.length*100)+' 分</div>答對 '+correct+'/'+qs.length+' 題';$("results").innerHTML=qs.map((q,i)=>{let ok=ans[i]==q.meaning;return '<div class="card '+(ok?"good":"bad")+'"><b>第 '+(i+1)+' 題：'+(ok?"✅ 正確":"❌ 錯誤")+'</b>'+(!ok?'<div class="muted">你的作答：'+esc(ans[i]||"未作答")+'｜正確答案：'+esc(q.meaning)+'</div>':"")+'<p>日文單字：<span class="word">'+esc(q.display)+'</span> <span class="muted">（'+esc(q.category)+'）</span></p><p>中文意思：'+esc(q.meaning)+'</p><button onclick="speak(\''+String(q.hiragana||q.katakana||q.kanji).replace(/'/g,"\\'")+'\')">🔊 聽正確日文</button></div>'}).join("");$("exam").classList.add("hidden");$("result").classList.remove("hidden");dash()};
-$("retry").onclick=()=>{$("result").classList.add("hidden");$("setup").classList.remove("hidden")};
+function submitQuiz(){
+  quizPlaying=false; quizPaused=false; speechSynthesis.cancel();
+  let correct=0, detail=[];
+  quiz.forEach((w,i)=>{
+    let e=document.querySelector(`input[name="quiz${i}"]:checked`);
+    let ans=e?e.value:'';
+    let ok=ans===w.zh; if(ok)correct++;
+    detail.push({w,ans,ok,i});
+  });
+  score=correct;
+  $('#question').classList.add('hidden');
+  $('#replayQuiz').classList.add('hidden');
+  $('#pauseQuiz').classList.add('hidden');
+  $('#progress').textContent='';
+  $('#result').classList.remove('hidden');
+  $('#result').innerHTML=`<div class="word">${correct} / ${quiz.length}</div>
+    <p>答對率 ${quiz.length?Math.round(correct/quiz.length*100):0}%</p>
+    <div>${detail.map(d=>`<div class="item">
+      <b>第 ${d.i+1} 題 ${d.ok?'✅':'❌'}</b>
+      <div>正確中文：${esc(d.w.zh)}</div>
+      ${d.ok?'':`<div>你的答案：${esc(d.ans||'未作答')}</div>`}
+      <div style="margin-top:6px"><span class="pos">${esc(d.w.pos||'—')}</span> <b>${esc(d.w.en)}</b> <span class="pill">${esc(d.w.cat)}</span></div>
+      ${d.w.ex?`<small>${esc(d.w.ex)}</small>`:''}
+      <div><button onclick="playQuizWord(${d.i})">🔊 聽正確發音</button></div>
+    </div>`).join('')}</div>
+    <button class="primary" onclick="startQuiz()">再考一次</button>`;
+  let hist=JSON.parse(localStorage.getItem('jp-quiz-history-v1')||'[]');
+  hist.unshift({t:Date.now(),score:correct,total:quiz.length,cat:$('#category').value});
+  localStorage.setItem('jp-quiz-history-v1',JSON.stringify(hist.slice(0,100)));
+}
+function renderList(arr){$('#searchStat').textContent=`顯示 ${arr.length} 個單字`;$('#wordList').innerHTML=arr.slice(0,500).map(w=>`<div class="item"><div class="row"><b>${esc(w.en)}</b><span class="pos">${esc(w.pos||'—')}</span><span class="pill">${esc(w.cat)}</span><button onclick="speak('${js(w.en)}')">🔊</button><button onclick="favById(${w.id})">${isFav(w)?'★':'☆'}</button></div><div>${esc(w.zh)}</div>${w.ex?`<small>${esc(w.ex)}</small>`:''}</div>`).join('')+(arr.length>500?'<p class="stat">為保持手機順暢，目前先顯示前 500 筆；請用搜尋縮小範圍。</p>':'')}
+function js(s){return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,' ')}
+function searchNow(){let q=$('#search').value.trim().toLowerCase();filtered=!q?words:words.filter(w=>[w.en,w.zh,w.pos,w.ex,w.cat,w.kanji,w.hiragana,w.katakana].some(v=>(v||'').toLowerCase().includes(q)));renderList(filtered)}
+function favs(){try{return JSON.parse(localStorage.getItem(FAV_KEY)||'[]')}catch{return[]}} function isFav(w){return favs().some(x=>x.en===w.en&&x.zh===w.zh)}
+function toggleFav(w){let f=favs(),i=f.findIndex(x=>x.en===w.en&&x.zh===w.zh);i>=0?f.splice(i,1):f.unshift(w);localStorage.setItem(FAV_KEY,JSON.stringify(f));renderFav()}
+function favById(id){let w=words.find(x=>x.id===id);if(w){toggleFav(w);searchNow()}}
+function renderFav(){let f=favs();$('#favList').innerHTML=f.length?f.map(w=>`<div class="item"><div class="row"><b>${esc(w.en)}</b><span class="pos">${esc(w.pos||'—')}</span><button onclick="speak('${js(w.en)}')">🔊</button><button class="danger" onclick="removeFav('${js(w.en)}')">移除</button></div><div>${esc(w.zh)}</div>${w.ex?`<small>${esc(w.ex)}</small>`:''}</div>`).join(''):'<p class="stat">尚未收藏單字。</p>'}
+function removeFav(en){let f=favs().filter(x=>x.en!==en);localStorage.setItem(FAV_KEY,JSON.stringify(f));renderFav();searchNow()}
+async function playSequence(seq){listenSeq=seq;li=0;listening=true;paused=false;while(listening&&li<listenSeq.length){while(paused&&listening)await wait(200);if(!listening)break;let w=listenSeq[li];$('#listenProgress').textContent=`${li+1} / ${listenSeq.length}`;$('#nowPlaying').innerHTML=`<div class="word">${esc(w.en)}</div><div class="meaning">${esc(w.zh)}</div><div>${esc(w.pos||'')} · ${esc(w.cat||'')}</div>`;await repeatSpeak(w.en,+$('#listenRepeat').value,+$('#listenRate').value,$('#listenAccent').value);li++;if(listening&&li<listenSeq.length)await wait(+$('#gap').value)}listening=false}
+$$('.tabs button').forEach(b=>b.onclick=()=>{$$('.tabs button').forEach(x=>x.classList.toggle('on',x===b));$$('.tab').forEach(x=>x.classList.add('hidden'));$('#'+b.dataset.tab).classList.remove('hidden')});
+$('#start').onclick=startQuiz;
+$('#replayQuiz').onclick=()=>{if(!quizPlaying)playQuizAll()};
+$('#pauseQuiz').onclick=()=>{
+  if(!quizPlaying)return;
+  quizPaused=!quizPaused;
+  $('#pauseQuiz').textContent=quizPaused?'繼續':'暫停';
+  if(quizPaused)speechSynthesis.pause();else speechSynthesis.resume();
+};
+$('#submitQuiz').onclick=submitQuiz;
+$('#search').oninput=searchNow;$('#accent').onchange=()=>{$('#listenAccent').value=$('#accent').value};$('#listenAccent').onchange=()=>{$('#accent').value=$('#listenAccent').value};
+$('#playAll').onclick=()=>{if(!listening)playSequence(shuffle(pool($('#listenCategory').value)))};$('#pauseAll').onclick=()=>{paused=!paused;$('#pauseAll').textContent=paused?'繼續':'暫停';if(paused)speechSynthesis.pause();else speechSynthesis.resume()};$('#stopAll').onclick=()=>{listening=false;paused=false;speechSynthesis.cancel();$('#listenProgress').textContent='已停止'};
+$('#playFav').onclick=()=>{let f=favs();if(!f.length)return alert('目前沒有收藏單字');$$('.tabs button')[2].click();playSequence(f)};$('#clearFav').onclick=()=>{if(confirm('確定清空所有收藏？')){localStorage.removeItem(FAV_KEY);renderFav()}};
 load();
 </script></body></html>
